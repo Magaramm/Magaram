@@ -25,7 +25,6 @@ Thread(target=run_web).start()
 # === Константы ===
 TOKEN = '7584648954:AAGfSblQxBCvwqSKgS5vQH6FvqNM9IOdBGQ'
 DOWNLOAD_DIR = 'downloads/'
-COOKIES_FILE = 'vk.com_cookies.txt'
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
@@ -192,9 +191,6 @@ def download_video(url, quality):
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
-        'cookiefile': COOKIES_FILE if 'vk.com' in url else None,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
         }
     }
     with yt_dlp.YoutubeDL({
@@ -221,10 +217,6 @@ def download_audio(url):
         True,
         'noprogress':
         True,
-        'cookiefile':
-        COOKIES_FILE if 'vk.com' in url else None,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
         }
     }
     with yt_dlp.YoutubeDL({
@@ -248,10 +240,6 @@ def download_best_video(url):
         True,
         'noprogress':
         True,
-        'cookiefile':
-        COOKIES_FILE if 'vk.com' in url else None,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
         },
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
