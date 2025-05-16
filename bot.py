@@ -2,9 +2,11 @@ import os
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
-                          CallbackQueryHandler, CallbackContext, PicklePersistence)
+                          CallbackQueryHandler, ContextTypes, PicklePersistence)
 from flask import Flask
 from threading import Thread
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # === Flask-сервер для UptimeRobot ===
 app = Flask('')
@@ -14,7 +16,7 @@ def home():
     return "Я живой!"
 
 def run_web():
-    port = int(os.environ.get('PORT', 10000)
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
 
 Thread(target=run_web).start()
@@ -27,7 +29,9 @@ if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 QUALITY_OPTIONS = {'video': ['360', '480', '720']}
-user_data = {}
+
+# Лучше использовать контекст пользователя для хранения данных, а не глобальный словарь
+# user_data = {}
 
 def is_playlist(url):
     return 'list=' in url
@@ -39,10 +43,10 @@ def parse_playlist_videos(url):
         entries = info.get('entries', [])
         return [(i + 1, e['title'], e['webpage_url']) for i, e in enumerate(entries)]
 
-async def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
 
-async def handle_message(update: Update, context: CallbackContext):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
 
@@ -52,7 +56,8 @@ async def handle_message(update: Update, context: CallbackContext):
         await update.message.reply_text("Пожалуйста, отправь ссылку на поддерживаемый сайт.")
         return
 
-    user_data[user_id] = {'url': url}
+    # Сохраняем url в user_data контекста
+    context.user_data['url'] = url
 
     if is_playlist(url) and 'youtube' in url:
         videos = parse_playlist_videos(url)
@@ -67,7 +72,7 @@ async def handle_message(update: Update, context: CallbackContext):
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Скачиваю...")
         try:
-            filename, title = download_best_video(url)
+            filename, title = await asyncio.get_running_loop().run_in_executor(None, download_best_video, url)
             with open(filename, 'rb') as f:
                 await update.message.reply_video(video=f, caption=title)
             os.remove(filename)
@@ -83,16 +88,14 @@ async def ask_format(update: Update):
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def ask_quality(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [InlineKeyboardButton(f"{q}p", callback_data=f"quality_{q}") for q in QUALITY_OPTIONS['video']]
     await update.callback_query.message.reply_text("Выберите качество видео:", reply_markup=InlineKeyboardMarkup([buttons]))
 
-async def button_handler(update: Update, context: CallbackContext):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    data = user_data.get(user_id)
+    data = context.user_data
 
     if query.data.startswith("select_"):
         num = int(query.data.split("_")[1])
@@ -101,31 +104,30 @@ async def button_handler(update: Update, context: CallbackContext):
         if not chosen:
             await query.edit_message_text("Ошибка выбора видео.")
             return
-        user_data[user_id]['url'] = chosen[2]
+        data['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(query.message)
+        await ask_format(update)
 
     elif query.data == "format_audio":
-        user_data[user_id]['format'] = 'audio'
+        data['format'] = 'audio'
         await query.edit_message_text("Выбран формат: Аудио (320 kbps)")
         await start_download(update, context)
 
     elif query.data == "format_video":
-        user_data[user_id]['format'] = 'video'
+        data['format'] = 'video'
         await query.edit_message_text("Выбран формат: Видео")
         await ask_quality(update, context)
 
     elif query.data.startswith("quality_"):
         quality = query.data.split("_")[1]
-        user_data[user_id]['quality'] = quality
+        data['quality'] = quality
         await query.edit_message_text(f"Качество видео: {quality}p")
         await start_download(update, context)
 
-async def start_download(update: Update, context: CallbackContext):
-    user_id = update.callback_query.from_user.id
-    data = user_data.get(user_id)
-    if not data:
-        await update.callback_query.message.reply_text("Ошибка: нет данных.")
+async def start_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = context.user_data
+    if not data or 'url' not in data or 'format' not in data:
+        await update.callback_query.message.reply_text("Ошибка: нет данных для скачивания.")
         return
 
     url = data['url']
@@ -134,15 +136,17 @@ async def start_download(update: Update, context: CallbackContext):
 
     await update.callback_query.message.reply_text("Скачиваю...")
 
+    loop = asyncio.get_running_loop()
+
     try:
         if fmt == 'video':
-            filename, title = download_video(url, quality)
+            filename, title = await loop.run_in_executor(None, download_video, url, quality)
             with open(filename, 'rb') as f:
                 await update.callback_query.message.reply_video(video=f, caption=title)
         else:
-            filename, title = download_audio(url)
+            filename, title = await loop.run_in_executor(None, download_audio, url)
+            performer = update.callback_query.from_user.first_name
             with open(filename, 'rb') as f:
-                performer = update.callback_query.from_user.first_name
                 await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer)
         os.remove(filename)
     except Exception as e:
@@ -186,10 +190,7 @@ def download_best_video(url):
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'
-        }]
+        # Удалил некорректный postprocessor
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
