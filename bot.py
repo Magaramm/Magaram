@@ -6,6 +6,7 @@ from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
                           PicklePersistence)
 from flask import Flask
 from threading import Thread
+import yt_dlp.utils
 
 # === Flask-сервер для UptimeRobot ===
 app = Flask('')
@@ -133,7 +134,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(query)
+        await ask_format(update)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -186,21 +187,18 @@ async def start_download(update: Update, context: CallbackContext):
 def download_video(url, quality):
     ydl_opts = {
         'format':
-        f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
+        f'bestvideo[height<={quality}]+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'max_filesize': 50_000_000,
+        'max_filesize': 100_000_000,  # Увеличил лимит для надежности
         'cookiefile': COOKIES_FILE if 'vk.com' in url else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
         }
     }
-    with yt_dlp.YoutubeDL({
-            k: v
-            for k, v in ydl_opts.items() if v is not None
-    }) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp4")
         return filename, info.get('title', 'Без названия')
@@ -208,29 +206,21 @@ def download_video(url, quality):
 
 def download_audio(url):
     ydl_opts = {
-        'format':
-        'bestaudio/best',
-        'outtmpl':
-        os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'format': 'bestaudio/best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '320',
         }],
-        'quiet':
-        True,
-        'noprogress':
-        True,
-        'cookiefile':
-        COOKIES_FILE if 'vk.com' in url else None,
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': COOKIES_FILE if 'vk.com' in url else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
         }
     }
-    with yt_dlp.YoutubeDL({
-            k: v
-            for k, v in ydl_opts.items() if v is not None
-    }) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp3")
         return filename, info.get('title', 'Без названия')
@@ -238,18 +228,12 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format':
-        'bv*+ba/b[ext=mp4]/b',
-        'outtmpl':
-        os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
-        'merge_output_format':
-        'mp4',
-        'quiet':
-        True,
-        'noprogress':
-        True,
-        'cookiefile':
-        COOKIES_FILE if 'vk.com' in url else None,
+        'format': 'bv*+ba/b[ext=mp4]/b',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': COOKIES_FILE if 'vk.com' in url else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
         },
@@ -258,10 +242,7 @@ def download_best_video(url):
             'preferedformat': 'mp4'
         }]
     }
-    with yt_dlp.YoutubeDL({
-            k: v
-            for k, v in ydl_opts.items() if v is not None
-    }) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp4")
         return filename, info.get('title', 'Без названия')
