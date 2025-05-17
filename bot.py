@@ -75,8 +75,7 @@ async def handle_message(update: Update, context: CallbackContext):
         try:
             filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
-                caption = f"{title}\n\nОтправлено через @{context.bot.username}"
-                await update.message.reply_video(video=f, caption=caption)
+                await update.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
             os.remove(filename)
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -146,15 +145,13 @@ async def start_download(update: Update, context: CallbackContext):
     try:
         if fmt == 'video':
             filename, title = download_video(url, quality)
-            caption = f"{title}\n\nОтправлено через @{context.bot.username}"
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption=caption)
+                await update.callback_query.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
         else:
             filename, title = download_audio(url)
-            caption = f"{title}\n\nОтправлено через @{context.bot.username}"
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
-                await update.callback_query.message.reply_audio(audio=f, caption=caption, title=title, performer=performer)
+                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer, caption="Отправлено через @Nkxay_bot")
         os.remove(filename)
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -208,13 +205,4 @@ def download_best_video(url):
 
 def main():
     persistence = PicklePersistence(filepath='bot_data.pkl')
-    application = Application.builder().token(TOKEN).persistence(persistence).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button_handler))
-
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
+    application = Application.builder().token(TOKEN).persistence(p
