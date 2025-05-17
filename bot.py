@@ -75,7 +75,8 @@ async def handle_message(update: Update, context: CallbackContext):
         try:
             filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f, caption=title)
+                caption = f"{title}\n\nОтправлено через @{context.bot.username}"
+                await update.message.reply_video(video=f, caption=caption)
             os.remove(filename)
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -145,13 +146,15 @@ async def start_download(update: Update, context: CallbackContext):
     try:
         if fmt == 'video':
             filename, title = download_video(url, quality)
+            caption = f"{title}\n\nОтправлено через @{context.bot.username}"
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption=title)
+                await update.callback_query.message.reply_video(video=f, caption=caption)
         else:
             filename, title = download_audio(url)
+            caption = f"{title}\n\nОтправлено через @{context.bot.username}"
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
-                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer)
+                await update.callback_query.message.reply_audio(audio=f, caption=caption, title=title, performer=performer)
         os.remove(filename)
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
