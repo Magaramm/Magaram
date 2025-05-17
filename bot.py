@@ -24,20 +24,22 @@ Thread(target=run_web).start()
 # === Константы ===
 TOKEN = os.environ.get("BOT_TOKEN")
 DOWNLOAD_DIR = 'downloads/'
+COOKIES_FILE = 'www.youtube.com_cookies.txt'
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 QUALITY_OPTIONS = {'video': ['360', '480', '720']}
 
-# Лучше использовать контекст пользователя для хранения данных, а не глобальный словарь
-# user_data = {}
-
 def is_playlist(url):
     return 'list=' in url
 
 def parse_playlist_videos(url):
-    ydl_opts = {'quiet': True, 'skip_download': True}
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'cookiefile': COOKIES_FILE
+    }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         entries = info.get('entries', [])
@@ -56,7 +58,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, отправь ссылку на поддерживаемый сайт.")
         return
 
-    # Сохраняем url в user_data контекста
     context.user_data['url'] = url
 
     if is_playlist(url) and 'youtube' in url:
@@ -160,6 +161,7 @@ def download_video(url, quality):
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
+        'cookiefile': COOKIES_FILE
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -177,6 +179,7 @@ def download_audio(url):
         }],
         'quiet': True,
         'noprogress': True,
+        'cookiefile': COOKIES_FILE
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -190,7 +193,7 @@ def download_best_video(url):
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        # Удалил некорректный postprocessor
+        'cookiefile': COOKIES_FILE
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
