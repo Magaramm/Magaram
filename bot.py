@@ -73,9 +73,9 @@ async def handle_message(update: Update, context: CallbackContext):
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Скачиваю...")
         try:
-            filename, title = download_best_video(url)
+            filename, _ = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
+                await update.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
             os.remove(filename)
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -144,9 +144,9 @@ async def start_download(update: Update, context: CallbackContext):
 
     try:
         if fmt == 'video':
-            filename, title = download_video(url, quality)
+            filename, _ = download_video(url, quality)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
+                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
