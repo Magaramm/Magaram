@@ -1,4 +1,4 @@
 flask
 python-telegram-bot==20.3
-yt-dlp
+yt-dlp>=2024.3.10
 telegram
