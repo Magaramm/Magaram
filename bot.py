@@ -2,11 +2,10 @@ import os
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
-                          CallbackQueryHandler, ContextTypes, PicklePersistence)
+                          CallbackQueryHandler, CallbackContext,
+                          PicklePersistence)
 from flask import Flask
 from threading import Thread
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
 # === Flask-сервер для UptimeRobot ===
 app = Flask('')
@@ -24,41 +23,42 @@ Thread(target=run_web).start()
 # === Константы ===
 TOKEN = os.environ.get("BOT_TOKEN")
 DOWNLOAD_DIR = 'downloads/'
-COOKIES_FILE = 'www.youtube.com_cookies.txt'
+VK_COOKIES = 'vk.com_cookies.txt'
+YT_COOKIES = 'youtube.com_cookies.txt'
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 QUALITY_OPTIONS = {'video': ['360', '480', '720']}
+user_data = {}
 
 def is_playlist(url):
     return 'list=' in url
 
 def parse_playlist_videos(url):
-    ydl_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'cookiefile': COOKIES_FILE
-    }
+    ydl_opts = {'quiet': True, 'skip_download': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         entries = info.get('entries', [])
         return [(i + 1, e['title'], e['webpage_url']) for i, e in enumerate(entries)]
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: CallbackContext):
     url = update.message.text.strip()
     user_id = update.effective_user.id
 
-    supported_sites = ['youtube.com', 'youtu.be', 'vk.com', 'tiktok.com', 'instagram.com', 'facebook.com']
+    supported_sites = [
+        'youtube.com', 'youtu.be', 'vk.com', 'tiktok.com', 'instagram.com',
+        'facebook.com'
+    ]
 
     if not any(site in url for site in supported_sites):
         await update.message.reply_text("Пожалуйста, отправь ссылку на поддерживаемый сайт.")
         return
 
-    context.user_data['url'] = url
+    user_data[user_id] = {'url': url}
 
     if is_playlist(url) and 'youtube' in url:
         videos = parse_playlist_videos(url)
@@ -73,7 +73,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Скачиваю...")
         try:
-            filename, title = await asyncio.get_running_loop().run_in_executor(None, download_best_video, url)
+            filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
                 await update.message.reply_video(video=f, caption=title)
             os.remove(filename)
@@ -84,19 +84,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_format(update: Update):
     keyboard = [[
-        InlineKeyboardButton("\U0001F3B5 Аудио", callback_data="format_audio"),
-        InlineKeyboardButton("\U0001F3A5 Видео", callback_data="format_video")
+        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    buttons = [InlineKeyboardButton(f"{q}p", callback_data=f"quality_{q}") for q in QUALITY_OPTIONS['video']]
+async def ask_quality(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    buttons = [
+        InlineKeyboardButton(f"{q}p", callback_data=f"quality_{q}")
+        for q in QUALITY_OPTIONS['video']
+    ]
     await update.callback_query.message.reply_text("Выберите качество видео:", reply_markup=InlineKeyboardMarkup([buttons]))
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
-    data = context.user_data
+    user_id = query.from_user.id
+    data = user_data.get(user_id)
 
     if query.data.startswith("select_"):
         num = int(query.data.split("_")[1])
@@ -105,49 +110,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not chosen:
             await query.edit_message_text("Ошибка выбора видео.")
             return
-        data['url'] = chosen[2]
+        user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(update)
+        await ask_format(query)
 
     elif query.data == "format_audio":
-        data['format'] = 'audio'
+        user_data[user_id]['format'] = 'audio'
         await query.edit_message_text("Выбран формат: Аудио (320 kbps)")
         await start_download(update, context)
 
     elif query.data == "format_video":
-        data['format'] = 'video'
+        user_data[user_id]['format'] = 'video'
         await query.edit_message_text("Выбран формат: Видео")
         await ask_quality(update, context)
 
     elif query.data.startswith("quality_"):
         quality = query.data.split("_")[1]
-        data['quality'] = quality
+        user_data[user_id]['quality'] = quality
         await query.edit_message_text(f"Качество видео: {quality}p")
         await start_download(update, context)
 
-async def start_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = context.user_data
-    if not data or 'url' not in data or 'format' not in data:
-        await update.callback_query.message.reply_text("Ошибка: нет данных для скачивания.")
+async def start_download(update: Update, context: CallbackContext):
+    user_id = update.callback_query.from_user.id
+    data = user_data.get(user_id)
+    if not data:
+        await update.callback_query.message.reply_text("Ошибка: нет данных.")
         return
 
     url = data['url']
     fmt = data['format']
     quality = data.get('quality', '320')
-
     await update.callback_query.message.reply_text("Скачиваю...")
-
-    loop = asyncio.get_running_loop()
 
     try:
         if fmt == 'video':
-            filename, title = await loop.run_in_executor(None, download_video, url, quality)
+            filename, title = download_video(url, quality)
             with open(filename, 'rb') as f:
                 await update.callback_query.message.reply_video(video=f, caption=title)
         else:
-            filename, title = await loop.run_in_executor(None, download_audio, url)
-            performer = update.callback_query.from_user.first_name
+            filename, title = download_audio(url)
             with open(filename, 'rb') as f:
+                performer = update.callback_query.from_user.first_name
                 await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer)
         os.remove(filename)
     except Exception as e:
@@ -161,9 +164,9 @@ def download_video(url, quality):
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
-        'cookiefile': COOKIES_FILE
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp4")
         return filename, info.get('title', 'Без названия')
@@ -179,9 +182,9 @@ def download_audio(url):
         }],
         'quiet': True,
         'noprogress': True,
-        'cookiefile': COOKIES_FILE
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp3")
         return filename, info.get('title', 'Без названия')
@@ -193,9 +196,9 @@ def download_best_video(url):
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'cookiefile': COOKIES_FILE
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp4")
         return filename, info.get('title', 'Без названия')
