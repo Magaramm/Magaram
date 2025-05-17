@@ -112,7 +112,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(query)
+        await ask_format(update)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -150,8 +150,7 @@ async def start_download(update: Update, context: CallbackContext):
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
-                performer = update.callback_query.from_user.first_name
-                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer, caption="Отправлено через @Nkxay_bot")
+                await update.callback_query.message.reply_audio(audio=f, caption="Отправлено через @Nkxay_bot")
         os.remove(filename)
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -205,4 +204,13 @@ def download_best_video(url):
 
 def main():
     persistence = PicklePersistence(filepath='bot_data.pkl')
-    application = Application.builder().token(TOKEN).persistence(p
+    application = Application.builder().token(TOKEN).persistence(persistence).build()
+
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(button_handler))
+
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
