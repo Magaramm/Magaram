@@ -55,7 +55,7 @@ async def handle_message(update: Update, context: CallbackContext):
     ]
 
     if not any(site in url for site in supported_sites):
-        await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.)
+        await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
         return
 
     user_data[user_id] = {'url': url}
