@@ -1,4 +1,5 @@
 import os
+import re
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
@@ -31,6 +32,9 @@ if not os.path.exists(DOWNLOAD_DIR):
 
 QUALITY_OPTIONS = {'video': ['360', '480', '720']}
 user_data = {}
+
+def safe_filename(name):
+    return re.sub(r'[^\w\-_\. \(\)]', '_', name)
 
 def is_playlist(url):
     return 'list=' in url
@@ -84,8 +88,8 @@ async def handle_message(update: Update, context: CallbackContext):
 
 async def ask_format(update: Update):
     keyboard = [[
-        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
-        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
+        InlineKeyboardButton("\ud83c\udfb5 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("\ud83c\udfa5 Видео", callback_data="format_video")
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -158,22 +162,23 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'format': f'bestvideo[ext=mp4][vcodec^=avc1][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc1][height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        title = safe_filename(info.get('title', 'video'))
+        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
     ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio/best',
+        'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -182,25 +187,27 @@ def download_audio(url):
         }],
         'quiet': True,
         'noprogress': True,
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
+        title = safe_filename(info.get('title', 'audio'))
+        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp3")
         return filename, info.get('title', 'Без названия')
 
 def download_best_video(url):
     ydl_opts = {
-        'format': 'bv*+ba/b[ext=mp4]/b',
+        'format': 'bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc1]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        title = safe_filename(info.get('title', 'video'))
+        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def main():
