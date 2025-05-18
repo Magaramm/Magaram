@@ -1,5 +1,6 @@
 import os
 import yt_dlp
+import subprocess
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
                           CallbackQueryHandler, CallbackContext,
@@ -25,7 +26,7 @@ TOKEN = os.environ.get("BOT_TOKEN")
 DOWNLOAD_DIR = 'downloads/'
 VK_COOKIES = 'vk.com_cookies.txt'
 YT_COOKIES = 'youtube.com_cookies.txt'
-INSTAGRAM_COOKIES = 'instacookies.txt'  # Добавлен файл cookies для Instagram
+INST_COOKIES = 'instacookies.txt'  # Добавлен файл куки для Instagram
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
@@ -113,7 +114,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(update)
+        await ask_format(query)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -148,47 +149,48 @@ async def start_download(update: Update, context: CallbackContext):
             filename, _ = download_video(url, quality)
             with open(filename, 'rb') as f:
                 await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+            os.remove(filename)
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
                 await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer, caption="Отправлено через @Nkxay_bot")
-        os.remove(filename)
+            os.remove(filename)
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
 
-def download_video(url, quality):
-    cookiefile_path = None
-    if 'youtube' in url and os.path.exists(YT_COOKIES):
-        cookiefile_path = YT_COOKIES
-    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
-        cookiefile_path = INSTAGRAM_COOKIES
+def convert_to_ios_compatible(input_file, output_file):
+    # Конвертируем видео в максимально совместимый с iOS mp4
+    command = [
+        'ffmpeg', '-i', input_file,
+        '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
+        '-c:a', 'aac',
+        '-movflags', '+faststart',
+        '-pix_fmt', 'yuv420p',
+        output_file,
+        '-y'
+    ]
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+def download_video(url, quality):
     ydl_opts = {
         'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'merge_output_format': 'mp4',
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
-        'cookiefile': cookiefile_path,
+        'merge_output_format': 'mp4',
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
-        return filename, info.get('title', 'Без названия')
+        downloaded_file = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        converted_file = os.path.join(DOWNLOAD_DIR, f"{info['title']}_ios.mp4")
+        convert_to_ios_compatible(downloaded_file, converted_file)
+        os.remove(downloaded_file)
+        return converted_file, info.get('title', 'Без названия')
 
 def download_audio(url):
-    cookiefile_path = None
-    if 'youtube' in url and os.path.exists(YT_COOKIES):
-        cookiefile_path = YT_COOKIES
-    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
-        cookiefile_path = INSTAGRAM_COOKIES
-
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
@@ -199,46 +201,45 @@ def download_audio(url):
         }],
         'quiet': True,
         'noprogress': True,
-        'cookiefile': cookiefile_path,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
 
 def download_best_video(url):
-    cookiefile_path = None
-    if 'youtube' in url and os.path.exists(YT_COOKIES):
-        cookiefile_path = YT_COOKIES
-    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
-        cookiefile_path = INSTAGRAM_COOKIES
-
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'merge_output_format': 'mp4',
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
         'quiet': True,
         'noprogress': True,
-        'cookiefile': cookiefile_path,
+        'merge_output_format': 'mp4',
+        'cookiefile': None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    # Добавим куки для Instagram, если есть и URL содержит instagram.com
+    if 'instagram.com' in url and os.path.exists(INST_COOKIES):
+        ydl_opts['cookiefile'] = INST_COOKIES
+    elif 'youtube' in url and os.path.exists(YT_COOKIES):
+        ydl_opts['cookiefile'] = YT_COOKIES
+
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
-        return filename, info.get('title', 'Без названия')
+        downloaded_file = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        converted_file = os.path.join(DOWNLOAD_DIR, f"{info['title']}_ios.mp4")
+        convert_to_ios_compatible(downloaded_file, converted_file)
+        os.remove(downloaded_file)
+        return converted_file, info.get('title', 'Без названия')
 
 def main():
-    persistence = PicklePersistence(filepath='user_data')
-    app_bot = Application.builder().token(TOKEN).persistence(persistence).build()
+    persistence = PicklePersistence(filepath='bot_data.pkl')
+    application = Application.builder().token(TOKEN).persistence(persistence).build()
 
-    app_bot.add_handler(CommandHandler('start', start))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app_bot.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(button_handler))
 
-    app_bot.run_polling()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
