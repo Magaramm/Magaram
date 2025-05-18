@@ -70,12 +70,12 @@ async def handle_message(update: Update, context: CallbackContext):
             btn_text = f"{num}. {title[:40]}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"select_{num}")])
         await update.message.reply_text("Выберите видео из плейлиста:", reply_markup=InlineKeyboardMarkup(keyboard))
-    elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com', 'vk.com']):
+    elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Скачиваю...")
         try:
-            filename, _ = download_full_video(url)
+            filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+                await update.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
             os.remove(filename)
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -144,9 +144,9 @@ async def start_download(update: Update, context: CallbackContext):
 
     try:
         if fmt == 'video':
-            filename, _ = download_video(url, quality)
+            filename, title = download_video(url, quality)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+                await update.callback_query.message.reply_video(video=f, caption=f"{title}\n\nОтправлено через @Nkxay_bot")
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
@@ -158,75 +158,49 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'cookiefile': None,
+        'max_filesize': 50_000_000,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-
-    try:
-        q = int(quality)
-    except:
-        q = 720
-
-    if 'youtube' in url or 'vk.com' in url:
-        ydl_opts['format'] = f'bestvideo[height<={q}]+bestaudio/best[height<={q}]/best'
-        if 'youtube' in url and os.path.exists(YT_COOKIES):
-            ydl_opts['cookiefile'] = YT_COOKIES
-        elif 'vk.com' in url and os.path.exists(VK_COOKIES):
-            ydl_opts['cookiefile'] = VK_COOKIES
-    else:
-        # Для TikTok, Instagram, Facebook — просто лучшее видео+аудио без ограничений
-        ydl_opts['format'] = 'bestvideo+bestaudio/best'
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if not filename.endswith('.mp4'):
-            base, ext = os.path.splitext(filename)
-            filename = base + '.mp4'
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'quiet': True,
-        'noprogress': True,
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '320',
         }],
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
 
-def download_full_video(url):
+def download_best_video(url):
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'cookiefile': None,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    # Для youtube используем куки, если есть
-    if 'youtube' in url and os.path.exists(YT_COOKIES):
-        ydl_opts['cookiefile'] = YT_COOKIES
-    elif 'vk.com' in url and os.path.exists(VK_COOKIES):
-        ydl_opts['cookiefile'] = VK_COOKIES
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if not filename.endswith('.mp4'):
-            base, ext = os.path.splitext(filename)
-            filename = base + '.mp4'
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def main():
