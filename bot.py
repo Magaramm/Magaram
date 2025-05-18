@@ -108,17 +108,18 @@ async def handle_message(update: Update, context: CallbackContext):
         await update.message.reply_text(
             "Выберите видео из плейлиста:",
             reply_markup=InlineKeyboardMarkup(keyboard))
-    elif is_youtube_short(url):
-        # Для YouTube Shorts скачиваем сразу в макс качестве и отправляем
-        await update.message.reply_text("Всё делается с любовью, минутку!")
-        try:
-            filename, title = download_best_video(url)
-            with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f,
-                                                caption="Отправлено через @Nkxay_bot")
-            os.remove(filename)
-        except Exception as e:
-            await update.message.reply_text(f"Ошибка при скачивании: {e}")
+   elif is_youtube_short(url):
+    # Для YouTube Shorts скачиваем сразу в макс качестве и отправляем
+    await update.message.reply_text("Всё делается с любовью, минутку!")
+    try:
+        filename, title = download_best_video(url)  # уже скачивает в best качестве
+        with open(filename, 'rb') as f:
+            await update.message.reply_video(video=f,
+                                            caption="Отправлено через @Nkxay_bot")
+        os.remove(filename)
+    except Exception as e:
+        await update.message.reply_text(f"Ошибка при скачивании: {e}")
+      
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Всё делается с любовью, минутку!")
         try:
