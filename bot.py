@@ -191,7 +191,6 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -200,9 +199,11 @@ def download_best_video(url):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        # автоматическое определение расширения
+        ext = info.get('ext', 'mp4')
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
         return filename, info.get('title', 'Без названия')
-
+      
 def main():
     persistence = PicklePersistence(filepath='bot_data.pkl')
     application = Application.builder().token(TOKEN).persistence(persistence).build()
