@@ -183,7 +183,7 @@ async def start_download(update: Update, context: CallbackContext):
     fmt = data['format']
     quality = data.get('quality', '320')
 
-    await update.callback_query.message.reply_text("Скачиваю...")
+    await update.callback_query.message.reply_text("Всё делается с любовью, минутку!")
 
     try:
         if fmt == 'video':
@@ -198,6 +198,7 @@ async def start_download(update: Update, context: CallbackContext):
                 await update.callback_query.message.reply_audio(
                     audio=f, title=title, performer=performer)
         os.remove(filename)
+      await update.callback_query.message.reply_text("Отправлено через @Nkxay_bot")
     except Exception as e:
         await update.callback_query.message.reply_text(
             f"Ошибка при скачивании: {e}")
