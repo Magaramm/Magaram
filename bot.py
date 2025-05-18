@@ -108,7 +108,7 @@ async def handle_message(update: Update, context: CallbackContext):
         await update.message.reply_text(
             "Выберите видео из плейлиста:",
             reply_markup=InlineKeyboardMarkup(keyboard))
-   elif is_youtube_short(url):
+  elif is_youtube_short(url):
     # Для YouTube Shorts скачиваем сразу в макс качестве и отправляем
     await update.message.reply_text("Всё делается с любовью, минутку!")
     try:
