@@ -55,7 +55,7 @@ async def handle_message(update: Update, context: CallbackContext):
     ]
 
     if not any(site in url for site in supported_sites):
-        await update.message.reply_text("Поддерживаются только YouTube, VK, TikTok, Instagram и Facebook.")
+        await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
         return
 
     user_data[user_id] = {'url': url}
@@ -71,9 +71,9 @@ async def handle_message(update: Update, context: CallbackContext):
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"select_{num}")])
         await update.message.reply_text("Выберите видео из плейлиста:", reply_markup=InlineKeyboardMarkup(keyboard))
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
-        await update.message.reply_text("Скачиваю...")
+        await update.message.reply_text("Скачиваю полное видео...")
         try:
-            filename, _ = download_best_video(url)
+            filename, _ = download_full_video(url)
             with open(filename, 'rb') as f:
                 await update.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
             os.remove(filename)
@@ -139,7 +139,7 @@ async def start_download(update: Update, context: CallbackContext):
 
     url = data['url']
     fmt = data['format']
-    quality = data.get('quality', '360')
+    quality = data.get('quality', '320')
     await update.callback_query.message.reply_text("Скачиваю...")
 
     try:
@@ -158,7 +158,7 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -191,6 +191,7 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
+        'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -199,11 +200,29 @@ def download_best_video(url):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        # автоматическое определение расширения
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        return filename, info.get('title', 'Без названия')
+
+def download_full_video(url):
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'postprocessors': [{
+            'key': 'FFmpegMerger',
+            'preferedformat': 'mp4',
+        }],
+        'fixup': 'detect_or_warn',
+        'nocheckcertificate': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
         ext = info.get('ext', 'mp4')
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
         return filename, info.get('title', 'Без названия')
-      
+
 def main():
     persistence = PicklePersistence(filepath='bot_data.pkl')
     application = Application.builder().token(TOKEN).persistence(persistence).build()
