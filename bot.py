@@ -58,6 +58,10 @@ def is_playlist(url):
     return 'list=' in url
 
 
+def is_youtube_short(url: str) -> bool:
+    return 'youtube.com/shorts/' in url
+
+
 def parse_playlist_videos(url):
     ydl_opts = {'quiet': True, 'skip_download': True, 'cookiefile': get_cookie_file(url)}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -104,12 +108,24 @@ async def handle_message(update: Update, context: CallbackContext):
         await update.message.reply_text(
             "Выберите видео из плейлиста:",
             reply_markup=InlineKeyboardMarkup(keyboard))
+    elif is_youtube_short(url):
+        # Для YouTube Shorts скачиваем сразу в макс качестве и отправляем
+        await update.message.reply_text("Всё делается с любовью, минутку!")
+        try:
+            filename, title = download_best_video(url)
+            with open(filename, 'rb') as f:
+                await update.message.reply_video(video=f,
+                                                caption="Отправлено через @Nkxay_bot")
+            os.remove(filename)
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при скачивании: {e}")
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
         await update.message.reply_text("Всё делается с любовью, минутку!")
         try:
             filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+                await update.message.reply_video(video=f,
+                                                caption="Отправлено через @Nkxay_bot")
             os.remove(filename)
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
@@ -188,13 +204,16 @@ async def start_download(update: Update, context: CallbackContext):
         if fmt == 'video':
             filename, title = download_video(url, quality)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+                await update.callback_query.message.reply_video(video=f,
+                                                                caption=title)
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
-                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer, caption="Отправлено через @Nkxay_bot")
+                await update.callback_query.message.reply_audio(
+                    audio=f, title=title, performer=performer)
         os.remove(filename)
+        await update.callback_query.message.reply_text("Отправлено через @Nkxay_bot")
     except Exception as e:
         await update.callback_query.message.reply_text(
             f"Ошибка при скачивании: {e}")
@@ -249,29 +268,21 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format':
-        'bv*+ba/b[ext=mp4]/b',
-        'outtmpl':
-        os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
-        'merge_output_format':
-        'mp4',
-        'quiet':
-        True,
-        'noprogress':
-        True,
-        'cookiefile':
-        get_cookie_file(url),
+        'format': 'best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'max_filesize': 50_000_000,
+        'cookiefile': get_cookie_file(url),
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
-        },
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'
-        }]
+        }
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.mp4")
+        ext = info.get('ext', 'mp4')
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['id']}.{ext}")
         return filename, info.get('title', 'Без названия')
 
 
@@ -286,5 +297,5 @@ def main():
     application.run_polling()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
