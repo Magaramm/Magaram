@@ -112,7 +112,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(query)
+        await ask_format(update)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -139,7 +139,7 @@ async def start_download(update: Update, context: CallbackContext):
 
     url = data['url']
     fmt = data['format']
-    quality = data.get('quality', '320')
+    quality = data.get('quality', None)
     await update.callback_query.message.reply_text("Скачиваю...")
 
     try:
@@ -156,9 +156,13 @@ async def start_download(update: Update, context: CallbackContext):
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
 
-def download_video(url, quality):
+def download_video(url, quality=None):
+    if quality:
+        format_str = f"bestvideo[height<={quality}]+bestaudio/best"
+    else:
+        format_str = "bestvideo+bestaudio/best"
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
+        'format': format_str,
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -168,7 +172,8 @@ def download_video(url, quality):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        ext = info.get('ext', 'mp4')
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
@@ -191,7 +196,7 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format': 'bv*+ba/b[ext=mp4]/b',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -200,7 +205,8 @@ def download_best_video(url):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        ext = info.get('ext', 'mp4')
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
         return filename, info.get('title', 'Без названия')
 
 def main():
