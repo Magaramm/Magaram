@@ -55,7 +55,7 @@ async def handle_message(update: Update, context: CallbackContext):
     ]
 
     if not any(site in url for site in supported_sites):
-        await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
+        await update.message.reply_text("Поддерживаются только YouTube, VK, TikTok, Instagram и Facebook.")
         return
 
     user_data[user_id] = {'url': url}
@@ -139,7 +139,7 @@ async def start_download(update: Update, context: CallbackContext):
 
     url = data['url']
     fmt = data['format']
-    quality = data.get('quality', '320')
+    quality = data.get('quality', '360')
     await update.callback_query.message.reply_text("Скачиваю...")
 
     try:
@@ -158,7 +158,7 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
+        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -191,7 +191,7 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format': 'bv*+ba/b[ext=mp4]/b',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
