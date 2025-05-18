@@ -105,14 +105,12 @@ async def handle_message(update: Update, context: CallbackContext):
             "Выберите видео из плейлиста:",
             reply_markup=InlineKeyboardMarkup(keyboard))
     elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
-        # Здесь заменили "Скачиваю..." на твой вариант
         await update.message.reply_text("Всё делается с любовью, минутку!")
         try:
-            filename, title = download_best_video(url)
+            filename, _ = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
-
-            # Добавили сообщение об отправке
+                await update.message.reply_video(video=f)
+            await update.message.reply_text("Отправлено через @Nkxay_bot")
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
     else:
@@ -184,41 +182,40 @@ async def start_download(update: Update, context: CallbackContext):
     fmt = data['format']
     quality = data.get('quality', '320')
 
-    # Заменяем текст сообщения на "Всё делается с любовью, минутку!"
     await update.callback_query.edit_message_text("Всё делается с любовью, минутку!")
 
     try:
         if fmt == 'video':
-            filename, title = download_video(url, quality)
+            filename, _ = download_video(url, quality)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f,
-                                                                caption=title)
+                await update.callback_query.message.reply_video(video=f)
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
                 await update.callback_query.message.reply_audio(
                     audio=f, title=title, performer=performer)
+
         os.remove(filename)
-        await update.callback_query.message.reply_text("Отправлено через @Nkxay_bot")
+
+        message_obj = update.callback_query.message if update.callback_query else update.message
+        if message_obj:
+            await message_obj.reply_text("Отправлено через @Nkxay_bot")
     except Exception as e:
-        await update.callback_query.message.reply_text(
-            f"Ошибка при скачивании: {e}")
+        err_msg = str(e) or "Неизвестная ошибка"
+        await update.callback_query.message.reply_text(f"Ошибка при скачивании: {err_msg}")
 
 
 def download_video(url, quality):
     ydl_opts = {
-        'format':
-        f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
         'max_filesize': 50_000_000,
         'cookiefile': get_cookie_file(url),
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
-        }
+        'http_headers': {'User-Agent': 'Mozilla/5.0'}
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -228,24 +225,17 @@ def download_video(url, quality):
 
 def download_audio(url):
     ydl_opts = {
-        'format':
-        'bestaudio/best',
-        'outtmpl':
-        os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'format': 'bestaudio/best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '320',
         }],
-        'quiet':
-        True,
-        'noprogress':
-        True,
-        'cookiefile':
-        get_cookie_file(url),
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
-        }
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': get_cookie_file(url),
+        'http_headers': {'User-Agent': 'Mozilla/5.0'}
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -255,21 +245,13 @@ def download_audio(url):
 
 def download_best_video(url):
     ydl_opts = {
-        'format':
-        'bv*+ba/b[ext=mp4]/b',
-        'outtmpl':
-        os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
-        'merge_output_format':
-        'mp4',
-        'quiet':
-        True,
-        'noprogress':
-        True,
-        'cookiefile':
-        get_cookie_file(url),
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
-        },
+        'format': 'bv*+ba/b[ext=mp4]/b',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': get_cookie_file(url),
+        'http_headers': {'User-Agent': 'Mozilla/5.0'},
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4'
