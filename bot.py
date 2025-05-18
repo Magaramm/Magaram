@@ -84,8 +84,8 @@ async def handle_message(update: Update, context: CallbackContext):
 
 async def ask_format(update: Update):
     keyboard = [[
-        InlineKeyboardButton("\U0001F3B5 Аудио", callback_data="format_audio"),
-        InlineKeyboardButton("\U0001F3A5 Видео", callback_data="format_video")
+        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -158,11 +158,15 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best',
+        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'quiet': False,  # для отладки, можно вернуть True
-        'noprogress': False,  # для отладки, можно вернуть True
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4'
+        }],
+        'quiet': True,
+        'noprogress': True,
         'max_filesize': 50_000_000,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
