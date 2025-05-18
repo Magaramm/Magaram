@@ -110,10 +110,9 @@ async def handle_message(update: Update, context: CallbackContext):
         try:
             filename, title = download_best_video(url)
             with open(filename, 'rb') as f:
-                await update.message.reply_video(video=f, caption=title)
-            os.remove(filename)
+                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+
             # Добавили сообщение об отправке
-            await update.message.reply_text("Отправлено через @Nkxay_bot")
         except Exception as e:
             await update.message.reply_text(f"Ошибка при скачивании: {e}")
     else:
