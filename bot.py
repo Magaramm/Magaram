@@ -1,4 +1,4 @@
-import os 
+import os
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
@@ -25,6 +25,7 @@ TOKEN = os.environ.get("BOT_TOKEN")
 DOWNLOAD_DIR = 'downloads/'
 VK_COOKIES = 'vk.com_cookies.txt'
 YT_COOKIES = 'youtube.com_cookies.txt'
+INSTAGRAM_COOKIES = 'instacookies.txt'  # Добавлен файл cookies для Instagram
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
@@ -112,7 +113,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(query)
+        await ask_format(update)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -157,27 +158,37 @@ async def start_download(update: Update, context: CallbackContext):
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
 
 def download_video(url, quality):
+    cookiefile_path = None
+    if 'youtube' in url and os.path.exists(YT_COOKIES):
+        cookiefile_path = YT_COOKIES
+    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
+        cookiefile_path = INSTAGRAM_COOKIES
+
     ydl_opts = {
         'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'quiet': True,
-        'noprogress': True,
-        'max_filesize': 50_000_000,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
+        'quiet': True,
+        'noprogress': True,
+        'max_filesize': 50_000_000,
+        'cookiefile': cookiefile_path,
     }
-    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if not filename.endswith(".mp4"):
-            filename = filename.rsplit(".", 1)[0] + ".mp4"
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
+    cookiefile_path = None
+    if 'youtube' in url and os.path.exists(YT_COOKIES):
+        cookiefile_path = YT_COOKIES
+    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
+        cookiefile_path = INSTAGRAM_COOKIES
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
@@ -188,42 +199,46 @@ def download_audio(url):
         }],
         'quiet': True,
         'noprogress': True,
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
+        'cookiefile': cookiefile_path,
     }
-    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
 
 def download_best_video(url):
+    cookiefile_path = None
+    if 'youtube' in url and os.path.exists(YT_COOKIES):
+        cookiefile_path = YT_COOKIES
+    elif 'instagram' in url and os.path.exists(INSTAGRAM_COOKIES):
+        cookiefile_path = INSTAGRAM_COOKIES
+
     ydl_opts = {
-        'format': 'bv*+ba/b[ext=mp4]/b',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'quiet': True,
-        'noprogress': True,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': cookiefile_path,
     }
-    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if not filename.endswith(".mp4"):
-            filename = filename.rsplit(".", 1)[0] + ".mp4"
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def main():
-    persistence = PicklePersistence(filepath='bot_data.pkl')
-    application = Application.builder().token(TOKEN).persistence(persistence).build()
+    persistence = PicklePersistence(filepath='user_data')
+    app_bot = Application.builder().token(TOKEN).persistence(persistence).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    app_bot.add_handler(CommandHandler('start', start))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app_bot.add_handler(CallbackQueryHandler(button_handler))
 
-    application.run_polling()
+    app_bot.run_polling()
 
 if __name__ == '__main__':
     main()
