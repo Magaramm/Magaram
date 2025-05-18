@@ -1,19 +1,13 @@
-import os
+import os 
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    CallbackQueryHandler,
-    CallbackContext,
-    PicklePersistence
-)
+from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
+                          CallbackQueryHandler, CallbackContext,
+                          PicklePersistence)
 from flask import Flask
 from threading import Thread
 
-# Flask сервер для uptime
+# === Flask-сервер для UptimeRobot ===
 app = Flask('')
 
 @app.route('/')
@@ -26,18 +20,18 @@ def run_web():
 
 Thread(target=run_web).start()
 
-# Конфиги
+# === Константы ===
 TOKEN = os.environ.get("BOT_TOKEN")
-DOWNLOAD_DIR = "downloads/"
-VK_COOKIES = "vk.com_cookies.txt"
-YT_COOKIES = "youtube.com_cookies.txt"
-INSTAGRAM_COOKIES = "instacookies"
-TIKTOK_COOKIES = "tiktokcook"
+DOWNLOAD_DIR = 'downloads/'
+VK_COOKIES = 'vk.com_cookies.txt'
+YT_COOKIES = 'youtube.com_cookies.txt'
+INSTAGRAM_COOKIES = 'instacookies'
+TIKTOK_COOKIES = 'tiktokcook'
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
-QUALITY_OPTIONS = ['360', '480', '720']
+QUALITY_OPTIONS = {'video': ['360', '480', '720']}
 user_data = {}
 
 def is_playlist(url):
@@ -101,7 +95,7 @@ async def ask_quality(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     buttons = [
         InlineKeyboardButton(f"{q}p", callback_data=f"quality_{q}")
-        for q in QUALITY_OPTIONS
+        for q in QUALITY_OPTIONS['video']
     ]
     await update.callback_query.message.reply_text("Выберите качество видео:", reply_markup=InlineKeyboardMarkup([buttons]))
 
@@ -147,7 +141,7 @@ async def start_download(update: Update, context: CallbackContext):
 
     url = data['url']
     fmt = data['format']
-    quality = data.get('quality', '360')
+    quality = data.get('quality', '320')
     await update.callback_query.message.reply_text("Скачиваю...")
 
     try:
@@ -173,12 +167,10 @@ def get_cookiefile(url):
         return TIKTOK_COOKIES
     elif 'vk.com' in url and os.path.exists(VK_COOKIES):
         return VK_COOKIES
-    else:
-        return None
+    return None
 
 def download_video(url, quality):
     cookiefile = get_cookiefile(url)
-
     ydl_opts = {
         'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
@@ -186,11 +178,8 @@ def download_video(url, quality):
         'quiet': True,
         'noprogress': True,
         'cookiefile': cookiefile,
-        'postprocessors': [{
-            'key': 'FFmpegMerger',
-        }],
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
         base, _ = os.path.splitext(filename)
@@ -199,7 +188,6 @@ def download_video(url, quality):
 
 def download_audio(url):
     cookiefile = get_cookiefile(url)
-
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
@@ -212,14 +200,15 @@ def download_audio(url):
         'noprogress': True,
         'cookiefile': cookiefile,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
-        return filename, info.get('title', 'Без названия')
+        filename = ydl.prepare_filename(info)
+        base, _ = os.path.splitext(filename)
+        final_file = base + '.mp3'
+        return final_file, info.get('title', 'Без названия')
 
 def download_best_video(url):
     cookiefile = get_cookiefile(url)
-
     ydl_opts = {
         'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
@@ -227,11 +216,8 @@ def download_best_video(url):
         'quiet': True,
         'noprogress': True,
         'cookiefile': cookiefile,
-        'postprocessors': [{
-            'key': 'FFmpegMerger',
-        }],
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
         base, _ = os.path.splitext(filename)
@@ -248,5 +234,5 @@ def main():
 
     application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
