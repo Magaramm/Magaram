@@ -1,4 +1,4 @@
-import os 
+import os
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
@@ -84,8 +84,8 @@ async def handle_message(update: Update, context: CallbackContext):
 
 async def ask_format(update: Update):
     keyboard = [[
-        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
-        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
+        InlineKeyboardButton("\ud83c\udfb5 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("\ud83c\udfa5 Видео", callback_data="format_video")
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -158,12 +158,12 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'
+            'key': 'FFmpegVideoRemuxer',
+            'preferedformat': 'mp4',
         }],
         'quiet': True,
         'noprogress': True,
@@ -198,6 +198,10 @@ def download_best_video(url):
         'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
+        'postprocessors': [{
+            'key': 'FFmpegVideoRemuxer',
+            'preferedformat': 'mp4',
+        }],
         'quiet': True,
         'noprogress': True,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
