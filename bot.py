@@ -171,22 +171,19 @@ def download_video(url, quality):
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
-def download_audio(url):
+def download_video(url, quality):
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '320',
-        }],
+        'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
+        'max_filesize': 50_000_000,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_full_video(url):
