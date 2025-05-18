@@ -1,11 +1,9 @@
 import os
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
-    CallbackQueryHandler, CallbackContext,
-    PicklePersistence
-)
+from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
+                          CallbackQueryHandler, CallbackContext,
+                          PicklePersistence)
 from flask import Flask
 from threading import Thread
 
@@ -114,7 +112,7 @@ async def button_handler(update: Update, context: CallbackContext):
             return
         user_data[user_id]['url'] = chosen[2]
         await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
-        await ask_format(update)
+        await ask_format(query)
 
     elif query.data == "format_audio":
         user_data[user_id]['format'] = 'audio'
@@ -141,7 +139,7 @@ async def start_download(update: Update, context: CallbackContext):
 
     url = data['url']
     fmt = data['format']
-    quality = data.get('quality', '720')
+    quality = data.get('quality', '320')
     await update.callback_query.message.reply_text("Скачиваю...")
 
     try:
@@ -167,18 +165,19 @@ def download_video(url, quality):
         'cookiefile': None,
     }
 
+    try:
+        q = int(quality)
+    except:
+        q = 720
+
     if 'youtube' in url or 'vk.com' in url:
-        try:
-            q = int(quality)
-        except:
-            q = 720
         ydl_opts['format'] = f'bestvideo[height<={q}]+bestaudio/best[height<={q}]/best'
         if 'youtube' in url and os.path.exists(YT_COOKIES):
             ydl_opts['cookiefile'] = YT_COOKIES
         elif 'vk.com' in url and os.path.exists(VK_COOKIES):
             ydl_opts['cookiefile'] = VK_COOKIES
     else:
-        # Instagram, TikTok, Facebook — просто лучший формат без фильтра по качеству
+        # Для TikTok, Instagram, Facebook — просто лучшее видео+аудио без ограничений
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -195,16 +194,16 @@ def download_audio(url):
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'quiet': True,
         'noprogress': True,
-        'cookiefile': None,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',
+        }],
     }
-    if 'youtube' in url and os.path.exists(YT_COOKIES):
-        ydl_opts['cookiefile'] = YT_COOKIES
-    elif 'vk.com' in url and os.path.exists(VK_COOKIES):
-        ydl_opts['cookiefile'] = VK_COOKIES
-
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
 
 def download_full_video(url):
@@ -216,6 +215,7 @@ def download_full_video(url):
         'noprogress': True,
         'cookiefile': None,
     }
+    # Для youtube используем куки, если есть
     if 'youtube' in url and os.path.exists(YT_COOKIES):
         ydl_opts['cookiefile'] = YT_COOKIES
     elif 'vk.com' in url and os.path.exists(VK_COOKIES):
