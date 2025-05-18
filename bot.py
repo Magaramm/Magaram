@@ -1,94 +1,217 @@
 import os
-from yt_dlp import YoutubeDL
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils import executor
+import yt_dlp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
+                          CallbackQueryHandler, CallbackContext,
+                          PicklePersistence)
+from flask import Flask
+from threading import Thread
 
-# Токен бота
-TOKEN = 'YOUR_BOT_TOKEN_HERE'  # замени на свой токен
+# === Flask-сервер для UptimeRobot ===
+app = Flask('')
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+@app.route('/')
+def home():
+    return "Я живой!"
 
-# Файлы с куки для VK и YouTube
-COOKIES_VK = 'cookies_vk.txt'
-COOKIES_YT = 'cookies_yt.txt'
+def run_web():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
-def download_video(url: str, cookiefile: str) -> str:
-    ydl_opts = {
-        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-        'outtmpl': '%(title)s.%(ext)s',
-        'cookiefile': cookiefile if cookiefile else None,
-        'quiet': True,
-        'no_warnings': True,
-    }
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-    return filename
+Thread(target=run_web).start()
 
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    await message.answer("Привет! Отправь ссылку на видео или плейлист.")
+# === Константы ===
+TOKEN = os.environ.get("BOT_TOKEN")
+DOWNLOAD_DIR = 'downloads/'
+VK_COOKIES = 'vk.com_cookies.txt'
+YT_COOKIES = 'youtube.com_cookies.txt'
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('choose_'))
-async def process_callback_choose(callback_query: types.CallbackQuery):
-    video_id = callback_query.data[len('choose_'):]
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    await bot.answer_callback_query(callback_query.id, text="Начинаю загрузку выбранного видео...")
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
 
-    try:
-        file_path = download_video(url, COOKIES_YT)
-        with open(file_path, 'rb') as video_file:
-            await bot.send_video(callback_query.from_user.id, video_file)
-        os.remove(file_path)
-    except Exception as e:
-        await bot.send_message(callback_query.from_user.id, f"Ошибка при скачивании видео: {e}")
+QUALITY_OPTIONS = {'video': ['360', '480', '720']}
+user_data = {}
 
-@dp.message_handler()
-async def handle_message(message: types.Message):
-    url = message.text.strip()
+def is_playlist(url):
+    return 'list=' in url
 
-    if 'vk.com' in url:
-        cookiefile = COOKIES_VK
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        cookiefile = COOKIES_YT
+def parse_playlist_videos(url):
+    ydl_opts = {'quiet': True, 'skip_download': True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        entries = info.get('entries', [])
+        return [(i + 1, e['title'], e['webpage_url']) for i, e in enumerate(entries)]
+
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
+
+async def handle_message(update: Update, context: CallbackContext):
+    url = update.message.text.strip()
+    user_id = update.effective_user.id
+
+    supported_sites = [
+        'youtube.com', 'youtu.be', 'vk.com', 'tiktok.com', 'instagram.com',
+        'facebook.com'
+    ]
+
+    if not any(site in url for site in supported_sites):
+        await update.message.reply_text("Привет! Отправь ссылку на YouTube, ВКонтакте, TikTok, Instagram или Facebook.")
+        return
+
+    user_data[user_id] = {'url': url}
+
+    if is_playlist(url) and 'youtube' in url:
+        videos = parse_playlist_videos(url)
+        if not videos:
+            await update.message.reply_text("Плейлист пуст или не может быть прочитан.")
+            return
+        keyboard = []
+        for num, title, _ in videos[:10]:
+            btn_text = f"{num}. {title[:40]}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"select_{num}")])
+        await update.message.reply_text("Выберите видео из плейлиста:", reply_markup=InlineKeyboardMarkup(keyboard))
+    elif any(x in url for x in ['tiktok.com', 'instagram.com', 'facebook.com']):
+        await update.message.reply_text("Скачиваю...")
+        try:
+            filename, _ = download_best_video(url)
+            with open(filename, 'rb') as f:
+                await update.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+            os.remove(filename)
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при скачивании: {e}")
     else:
-        cookiefile = None
+        await ask_format(update)
 
-    # Если ссылка на плейлист
-    if 'list=' in url:
-        ydl_opts = {
-            'ignoreerrors': True,
-            'cookiefile': cookiefile if cookiefile else None,
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': True,
-        }
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-        if info and 'entries' in info:
-            keyboard = InlineKeyboardMarkup(row_width=1)
-            for entry in info['entries']:
-                if entry is None:
-                    continue
-                btn_text = entry.get('title', 'Видео')
-                video_id = entry.get('id')
-                keyboard.insert(InlineKeyboardButton(btn_text, callback_data=f'choose_{video_id}'))
-            await message.answer("Выберите видео из плейлиста:", reply_markup=keyboard)
-            return
-        else:
-            await message.answer("Не удалось получить плейлист.")
-            return
+async def ask_format(update: Update):
+    keyboard = [[
+        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
+    ]]
+    await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    # Обычная ссылка на видео
+async def ask_quality(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    buttons = [
+        InlineKeyboardButton(f"{q}p", callback_data=f"quality_{q}")
+        for q in QUALITY_OPTIONS['video']
+    ]
+    await update.callback_query.message.reply_text("Выберите качество видео:", reply_markup=InlineKeyboardMarkup([buttons]))
+
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    data = user_data.get(user_id)
+
+    if query.data.startswith("select_"):
+        num = int(query.data.split("_")[1])
+        videos = parse_playlist_videos(data['url'])
+        chosen = next((v for v in videos if v[0] == num), None)
+        if not chosen:
+            await query.edit_message_text("Ошибка выбора видео.")
+            return
+        user_data[user_id]['url'] = chosen[2]
+        await query.edit_message_text(f"Вы выбрали: {chosen[1]}")
+        await ask_format(query)
+
+    elif query.data == "format_audio":
+        user_data[user_id]['format'] = 'audio'
+        await query.edit_message_text("Выбран формат: Аудио (320 kbps)")
+        await start_download(update, context)
+
+    elif query.data == "format_video":
+        user_data[user_id]['format'] = 'video'
+        await query.edit_message_text("Выбран формат: Видео")
+        await ask_quality(update, context)
+
+    elif query.data.startswith("quality_"):
+        quality = query.data.split("_")[1]
+        user_data[user_id]['quality'] = quality
+        await query.edit_message_text(f"Качество видео: {quality}p")
+        await start_download(update, context)
+
+async def start_download(update: Update, context: CallbackContext):
+    user_id = update.callback_query.from_user.id
+    data = user_data.get(user_id)
+    if not data:
+        await update.callback_query.message.reply_text("Ошибка: нет данных.")
+        return
+
+    url = data['url']
+    fmt = data['format']
+    quality = data.get('quality', '320')
+    await update.callback_query.message.reply_text("Скачиваю...")
+
     try:
-        file_path = download_video(url, cookiefile) if cookiefile else download_video(url, '')
-        with open(file_path, 'rb') as video_file:
-            await bot.send_video(message.chat.id, video_file)
-        os.remove(file_path)
+        if fmt == 'video':
+            filename, _ = download_video(url, quality)
+            with open(filename, 'rb') as f:
+                await update.callback_query.message.reply_video(video=f, caption="Отправлено через @Nkxay_bot")
+        else:
+            filename, title = download_audio(url)
+            with open(filename, 'rb') as f:
+                performer = update.callback_query.from_user.first_name
+                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer, caption="Отправлено через @Nkxay_bot")
+        os.remove(filename)
     except Exception as e:
-        await message.answer(f"Ошибка при скачивании видео: {e}")
+        await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
+
+def download_video(url, quality):
+    ydl_opts = {
+        'format': f'bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'max_filesize': 50_000_000,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+    }
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        return filename, info.get('title', 'Без названия')
+
+def download_audio(url):
+    ydl_opts = {
+        'format': 'bestaudio[ext=m4a]/bestaudio/best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',
+        }],
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+    }
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
+        return filename, info.get('title', 'Без названия')
+
+def download_best_video(url):
+    ydl_opts = {
+        'format': 'bv*+ba/b[ext=mp4]/b',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'noprogress': True,
+        'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else VK_COOKIES if 'vk.com' in url and os.path.exists(VK_COOKIES) else None,
+    }
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
+        return filename, info.get('title', 'Без названия')
+
+def main():
+    persistence = PicklePersistence(filepath='bot_data.pkl')
+    application = Application.builder().token(TOKEN).persistence(persistence).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(button_handler))
+
+    application.run_polling()
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    main()
