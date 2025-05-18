@@ -1,4 +1,4 @@
-import os
+import os 
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
@@ -84,8 +84,8 @@ async def handle_message(update: Update, context: CallbackContext):
 
 async def ask_format(update: Update):
     keyboard = [[
-        InlineKeyboardButton("🎵 Аудио", callback_data="format_audio"),
-        InlineKeyboardButton("🎥 Видео", callback_data="format_video")
+        InlineKeyboardButton("\U0001F3B5 Аудио", callback_data="format_audio"),
+        InlineKeyboardButton("\U0001F3A5 Видео", callback_data="format_video")
     ]]
     await update.message.reply_text("Выберите формат:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -156,28 +156,19 @@ async def start_download(update: Update, context: CallbackContext):
     except Exception as e:
         await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
 
-def download_video(url, quality=None):
-    if quality:
-        format_str = f"bestvideo[height<={quality}]+bestaudio/best"
-    else:
-        format_str = "bestvideo+bestaudio/best"
-
+def download_video(url, quality):
     ydl_opts = {
-        'format': format_str,
+        'format': f'bestvideo[height<={quality}]+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'postprocessors': [{
-            'key': 'FFmpegMerger',
-        }],
-        'quiet': True,
-        'noprogress': True,
+        'quiet': False,  # для отладки, можно вернуть True
+        'noprogress': False,  # для отладки, можно вернуть True
+        'max_filesize': 50_000_000,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        ext = info.get('ext', 'mp4')
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
@@ -193,7 +184,7 @@ def download_audio(url):
         'noprogress': True,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
@@ -203,17 +194,13 @@ def download_best_video(url):
         'format': 'bv*+ba/b[ext=mp4]/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'postprocessors': [{
-            'key': 'FFmpegMerger',
-        }],
         'quiet': True,
         'noprogress': True,
         'cookiefile': YT_COOKIES if 'youtube' in url and os.path.exists(YT_COOKIES) else None,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        ext = info.get('ext', 'mp4')
-        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.{ext}")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def main():
