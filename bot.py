@@ -189,19 +189,16 @@ async def start_download(update: Update, context: CallbackContext):
         if fmt == 'video':
             filename, title = download_video(url, quality)
             with open(filename, 'rb') as f:
-                await update.callback_query.message.reply_video(video=f,
-                                                                caption=title)
+                await update.callback_query.message.reply_video(video=f, caption=title)
         else:
             filename, title = download_audio(url)
             with open(filename, 'rb') as f:
                 performer = update.callback_query.from_user.first_name
-                await update.callback_query.message.reply_audio(
-                    audio=f, title=title, performer=performer)
+                await update.callback_query.message.reply_audio(audio=f, title=title, performer=performer)
         os.remove(filename)
         await update.callback_query.message.reply_text("Отправлено через @Nkxay_bot")
     except Exception as e:
-        await update.callback_query.message.reply_text(
-            f"Ошибка при скачивании: {e}")
+        await update.callback_query.message.reply_text(f"Ошибка при скачивании: {e}")
 
 
 def download_video(url, quality):
