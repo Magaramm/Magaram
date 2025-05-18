@@ -1,5 +1,4 @@
 import os
-import re
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
@@ -32,9 +31,6 @@ if not os.path.exists(DOWNLOAD_DIR):
 
 QUALITY_OPTIONS = {'video': ['360', '480', '720']}
 user_data = {}
-
-def safe_filename(name):
-    return re.sub(r'[^\w\-_\. \(\)]', '_', name)
 
 def is_playlist(url):
     return 'list=' in url
@@ -162,7 +158,7 @@ async def start_download(update: Update, context: CallbackContext):
 
 def download_video(url, quality):
     ydl_opts = {
-        'format': f'bestvideo[ext=mp4][vcodec^=avc1][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc1][height<={quality}]',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -172,8 +168,7 @@ def download_video(url, quality):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        title = safe_filename(info.get('title', 'video'))
-        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def download_audio(url):
@@ -191,13 +186,12 @@ def download_audio(url):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        title = safe_filename(info.get('title', 'audio'))
-        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp3")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp3")
         return filename, info.get('title', 'Без названия')
 
 def download_best_video(url):
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc1]',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'quiet': True,
@@ -206,8 +200,7 @@ def download_best_video(url):
     }
     with yt_dlp.YoutubeDL({k: v for k, v in ydl_opts.items() if v is not None}) as ydl:
         info = ydl.extract_info(url, download=True)
-        title = safe_filename(info.get('title', 'video'))
-        filename = os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
+        filename = os.path.join(DOWNLOAD_DIR, f"{info['title']}.mp4")
         return filename, info.get('title', 'Без названия')
 
 def main():
