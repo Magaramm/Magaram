@@ -29,7 +29,7 @@ DOWNLOAD_DIR = 'downloads/'
 VK_COOKIES = os.environ.get("VK_COOKIES", "vk.com_cookies.txt")
 YT_COOKIES = os.environ.get("YT_COOKIES", "youtube.com_cookies.txt")
 TT_COOKIES = os.environ.get("TT_COOKIES", "tiktok_cookies.txt")
-IG_COOKIES = os.environ.get("IG_COOKIES", "instagram_cookies.txt")
+IG_COOKIES = os.environ.get("IG_COOKIES", "instacookies.txt")
 FB_COOKIES = os.environ.get("FB_COOKIES", "facebook_cookies.txt")
 
 if not os.path.exists(DOWNLOAD_DIR):
