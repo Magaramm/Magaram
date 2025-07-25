@@ -227,7 +227,7 @@ def download_video(url, quality):
         'merge_output_format': 'mp4',
         'quiet': True,
         'noprogress': True,
-        'max_filesize': 50_000_000,
+        'max_filesize': 100_000_000,
         'cookiefile': get_cookie_file(url),
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
